@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>經典數獨 9x9</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --text: #1f2430;
+      --muted: #65708a;
+      --line: #c9d1e2;
+      --line-strong: #2f3a52;
+      --given: #0f172a;
+      --user: #1d4ed8;
+      --sel: #ffeaa7;
+      --peer: #e8eefc;
+      --same: #d8f7e9;
+      --conflict: #ffdde1;
+      --conflict-text: #b42318;
+      --accent: #0ea5e9;
+      --accent-2: #0284c7;
+      --ok: #16a34a;
+      --warn: #b45309;
+      --danger: #dc2626;
+      --shadow: 0 10px 24px rgba(18, 32, 64, 0.12);
+    }
+    [data-theme="dark"] {
+      --bg: #0d1424;
+      --panel: #121b2f;
+      --text: #e8edf8;
+      --muted: #8ea0c6;
+      --line: #33415f;
+      --line-strong: #94a3c8;
+      --given: #f8fafc;
+      --user: #7dd3fc;
+      --sel: #4a3f1e;
+      --peer: #1d2a45;
+      --same: #183b2d;
+      --conflict: #4b1f2a;
+      --conflict-text: #fda4af;
+      --accent: #38bdf8;
+      --accent-2: #0ea5e9;
+      --shadow: 0 10px 24px rgba(2, 8, 20, 0.45);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: radial-gradient(1200px 700px at 20% -10%, rgba(56,189,248,0.13), transparent 55%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+    .app {
+      width: min(980px, 100%);
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 1fr;
+    }
+    .topbar, .controls, .stats {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: var(--shadow);
+    }
+    .topbar {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr auto auto auto;
+      align-items: center;
+    }
+    .title {
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      font-size: 20px;
+    }
+    .timer {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--accent-2);
+      padding: 6px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: color-mix(in oklab, var(--panel) 92%, var(--accent) 8%);
+    }
+    .board-wrap {
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+    .board {
+      width: min(92vw, 620px);
+      aspect-ratio: 1 / 1;
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      grid-template-rows: repeat(9, 1fr);
+      background: var(--panel);
+      border: 3px solid var(--line-strong);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .cell {
+      position: relative;
+      border: 1px solid var(--line);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      min-width: 28px;
+      min-height: 28px;
+      background: var(--panel);
+      transition: background 120ms ease;
+    }
+    .cell.bright-right { border-right: 3px solid var(--line-strong); }
+    .cell.bright-bottom { border-bottom: 3px solid var(--line-strong); }
+
+    .cell.selected { background: var(--sel); }
+    .cell.peer { background: var(--peer); }
+    .cell.same { background: var(--same); }
+    .cell.conflict { background: var(--conflict); }
+    .cell .value {
+      font-size: clamp(18px, 3.7vw, 34px);
+      line-height: 1;
+      font-weight: 500;
+      color: var(--user);
+    }
+    .cell.given .value {
+      font-weight: 800;
+      color: var(--given);
+    }
+    .cell .notes {
+      position: absolute;
+      inset: 2px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      font-size: clamp(8px, 1.4vw, 12px);
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.1;
+    }
+    .cell .notes span { display: flex; justify-content: center; align-items: center; }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .row.spread { justify-content: space-between; }
+
+    button, select, label.toggle {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 14px;
+    }
+    button {
+      cursor: pointer;
+      transition: transform 90ms ease, background 120ms ease;
+    }
+    button:hover { background: color-mix(in oklab, var(--panel) 88%, var(--accent) 12%); }
+    button:active { transform: translateY(1px); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent-2);
+      color: #ffffff;
+      font-weight: 700;
+    }
+    button.primary:hover { background: var(--accent-2); }
+    button.warn { border-color: color-mix(in oklab, var(--warn) 45%, var(--line) 55%); }
+    button.danger { border-color: color-mix(in oklab, var(--danger) 45%, var(--line) 55%); }
+
+    button.active {
+      background: color-mix(in oklab, var(--panel) 70%, var(--accent) 30%);
+      border-color: var(--accent-2);
+      font-weight: 700;
+    }
+
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { accent-color: var(--accent-2); }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(46px, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .key {
+      position: relative;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 12px 6px;
+      text-align: center;
+    }
+    .key .remain {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .stats b { color: var(--text); }
+
+    .hint-msg {
+      min-height: 20px;
+      color: var(--accent-2);
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .loading {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: color-mix(in oklab, var(--panel) 70%, transparent 30%);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+      border-radius: 12px;
+    }
+    .loading.show { display: grid; }
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 4px solid color-mix(in oklab, var(--line) 70%, transparent 30%);
+      border-top-color: var(--accent-2);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      background: #111827;
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-size: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 99;
+    }
+    .toast.show { opacity: 0.95; }
+
+    @media (max-width: 720px) {
+      .topbar {
+        grid-template-columns: 1fr 1fr;
+      }
+      .title { font-size: 18px; }
+      .row { gap: 6px; }
+      button, select, label.toggle { padding: 7px 9px; font-size: 13px; }
+      .key { font-size: 16px; padding: 10px 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="title">經典數獨 9x9</div>
+      <div class="timer" id="timer">00:00</div>
+      <button id="pauseBtn">暫停</button>
+      <button id="themeBtn">深色模式</button>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board" id="board" aria-label="Sudoku board"></div>
+      <div class="loading" id="loading">
+        <div>
+          <div class="spinner"></div>
+          <div style="font-weight:700;">產生題目中...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="row">
+        <button class="primary" id="newBtn">產生數獨</button>
+        <label for="difficulty">難度</label>
+        <select id="difficulty">
+          <option value="easy">簡單</option>
+          <option value="medium" selected>中等</option>
+          <option value="hard">困難</option>
+          <option value="expert">專家</option>
+        </select>
+        <button id="undoBtn">復原 Undo</button>
+        <button id="redoBtn">重做 Redo</button>
+        <button id="noteBtn">筆記模式</button>
+        <button id="clearBtn">清除</button>
+      </div>
+
+      <div class="row">
+        <button id="hintBtn">提示 Hint</button>
+        <button id="checkBtn">檢查 Check</button>
+        <button id="resetBtn" class="warn">重置答案</button>
+        <button id="solveBtn" class="danger">顯示解答</button>
+        <label class="toggle"><input type="checkbox" id="autoCheck" checked />自動檢查</label>
+        <label class="toggle"><input type="checkbox" id="autoNotes" checked />自動更新筆記</label>
+      </div>
+
+      <div class="keypad" id="keypad"></div>
+      <div class="hint-msg" id="hintMsg"></div>
+    </div>
+
+    <div class="stats" id="stats">
+      <span>難度：<b id="statDifficulty">中等</b></span>
+      <span>提示次數：<b id="statHints">0</b></span>
+      <span>錯誤次數：<b id="statErrors">0</b></span>
+      <span>狀態：<b id="statStatus">進行中</b></span>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // ===== 常數與資料結構 =====
+      const STORAGE_KEY = "sudoku_single_file_v1";
+      const THEME_KEY = "sudoku_theme_pref_v1";
+      const N = 9;
+      const CELL_COUNT = 81;
+      const DIGIT_MASK = 0x3FE; // bit1~bit9
+      const DIFFICULTIES = {
+        easy: { min: 36, max: 45, label: "簡單" },
+        medium: { min: 32, max: 35, label: "中等" },
+        hard: { min: 28, max: 31, label: "困難" },
+        expert: { min: 22, max: 27, label: "專家" },
+      };
+
+      const boardEl = document.getElementById("board");
+      const loadingEl = document.getElementById("loading");
+      const timerEl = document.getElementById("timer");
+      const hintMsgEl = document.getElementById("hintMsg");
+      const toastEl = document.getElementById("toast");
+
+      const newBtn = document.getElementById("newBtn");
+      const difficultyEl = document.getElementById("difficulty");
+      const undoBtn = document.getElementById("undoBtn");
+      const redoBtn = document.getElementById("redoBtn");
+      const noteBtn = document.getElementById("noteBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const hintBtn = document.getElementById("hintBtn");
+      const checkBtn = document.getElementById("checkBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const solveBtn = document.getElementById("solveBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const themeBtn = document.getElementById("themeBtn");
+      const autoCheckEl = document.getElementById("autoCheck");
+      const autoNotesEl = document.getElementById("autoNotes");
+
+      const statDifficulty = document.getElementById("statDifficulty");
+      const statHints = document.getElementById("statHints");
+      const statErrors = document.getElementById("statErrors");
+      const statStatus = document.getElementById("statStatus");
+
+      let puzzle = Array(CELL_COUNT).fill(0);
+      let solution = Array(CELL_COUNT).fill(0);
+      let board = Array(CELL_COUNT).fill(0);
+      let givens = Array(CELL_COUNT).fill(false);
+      let notes = Array(CELL_COUNT).fill(0); // bitmask
+      let selected = -1;
+      let selectedDigit = 0;
+      let noteMode = false;
+      let autoCheck = true;
+      let autoUpdateNotes = true;
+      let paused = false;
+      let completed = false;
+      let hintCount = 0;
+      let errorCount = 0;
+      let difficulty = "medium";
+      let elapsed = 0;
+      let timerId = null;
+      let lastSaveAt = 0;
+      let showCheckedErrors = false;
+      let checkedErrorSet = new Set();
+      let hintCell = -1;
+      let generating = false;
+
+      let undoStack = [];
+      let redoStack = [];
+
+      const cells = [];
+      const ROW_UNITS = [];
+      const COL_UNITS = [];
+      const BOX_UNITS = [];
+      const ALL_UNITS = [];
+      const PEERS = Array.from({ length: CELL_COUNT }, () => new Set());
+
+      // ===== 工具函式 =====
+      function idxToRC(i) { return [Math.floor(i / 9), i % 9]; }
+      function rcToIdx(r, c) { return r * 9 + c; }
+      function boxIndex(r, c) { return Math.floor(r / 3) * 3 + Math.floor(c / 3); }
+      function popcount(x) {
+        let c = 0;
+        while (x) { x &= (x - 1); c++; }
+        return c;
+      }
+      function bitToDigit(bit) { return Math.log2(bit) | 0; }
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+      function randomInt(min, max) {
+        return (Math.random() * (max - min + 1) + min) | 0;
+      }
+      function formatTime(sec) {
+        const s = sec % 60;
+        const m = Math.floor(sec / 60) % 60;
+        const h = Math.floor(sec / 3600);
+        if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+      function showToast(msg, ms = 1600) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(showToast._t);
+        showToast._t = setTimeout(() => toastEl.classList.remove("show"), ms);
+      }
+      function setHintMsg(msg) { hintMsgEl.textContent = msg || ""; }
+
+      function sleepFrame() {
+        return new Promise(resolve => requestAnimationFrame(resolve));
+      }
+
+      // ===== 盤面單位與鄰居預計算 =====
+      function initUnits() {
+        for (let r = 0; r < 9; r++) {
+          const row = [];
+          for (let c = 0; c < 9; c++) row.push(rcToIdx(r, c));
+          ROW_UNITS.push(row);
+          ALL_UNITS.push(row);
+        }
+        for (let c = 0; c < 9; c++) {
+          const col = [];
+          for (let r = 0; r < 9; r++) col.push(rcToIdx(r, c));
+          COL_UNITS.push(col);
+          ALL_UNITS.push(col);
+        }
+        for (let br = 0; br < 3; br++) {
+          for (let bc = 0; bc < 3; bc++) {
+            const box = [];
+            for (let r = br * 3; r < br * 3 + 3; r++) {
+              for (let c = bc * 3; c < bc * 3 + 3; c++) {
+                box.push(rcToIdx(r, c));
+              }
+            }
+            BOX_UNITS.push(box);
+            ALL_UNITS.push(box);
+          }
+        }
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          for (const j of ROW_UNITS[r]) if (j !== i) PEERS[i].add(j);
+          for (const j of COL_UNITS[c]) if (j !== i) PEERS[i].add(j);
+          for (const j of BOX_UNITS[b]) if (j !== i) PEERS[i].add(j);
+        }
+      }
+
+      // ===== Sudoku 候選數與衝突 =====
+      function getCandidateMask(grid, idx) {
+        if (grid[idx] !== 0) return 0;
+        const [r, c] = idxToRC(idx);
+        let used = 0;
+
+        for (let cc = 0; cc < 9; cc++) {
+          const v = grid[rcToIdx(r, cc)];
+          if (v) used |= (1 << v);
+        }
+        for (let rr = 0; rr < 9; rr++) {
+          const v = grid[rcToIdx(rr, c)];
+          if (v) used |= (1 << v);
+        }
+        const br = Math.floor(r / 3) * 3;
+        const bc = Math.floor(c / 3) * 3;
+        for (let rr = br; rr < br + 3; rr++) {
+          for (let cc = bc; cc < bc + 3; cc++) {
+            const v = grid[rcToIdx(rr, cc)];
+            if (v) used |= (1 << v);
+          }
+        }
+        return DIGIT_MASK & ~used;
+      }
+
+      function computeConflicts(grid) {
+        const bad = new Set();
+        function markDup(unit) {
+          const seen = new Map();
+          for (const i of unit) {
+            const v = grid[i];
+            if (!v) continue;
+            if (!seen.has(v)) seen.set(v, [i]);
+            else seen.get(v).push(i);
+          }
+          for (const arr of seen.values()) {
+            if (arr.length > 1) for (const i of arr) bad.add(i);
+          }
+        }
+        for (const u of ALL_UNITS) markDup(u);
+        return bad;
+      }
+
+      // ===== 生成完整解：隨機回溯（MRV） =====
+      function generateSolvedBoard() {
+        const grid = Array(CELL_COUNT).fill(0);
+        const rowUsed = Array(9).fill(0);
+        const colUsed = Array(9).fill(0);
+        const boxUsed = Array(9).fill(0);
+
+        function getMask(i) {
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          return DIGIT_MASK & ~(rowUsed[r] | colUsed[c] | boxUsed[b]);
+        }
+
+        function setNum(i, d) {
+          grid[i] = d;
+          const bit = 1 << d;
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          rowUsed[r] |= bit;
+          colUsed[c] |= bit;
+          boxUsed[b] |= bit;
+        }
+
+        function unsetNum(i, d) {
+          grid[i] = 0;
+          const bit = ~(1 << d);
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          rowUsed[r] &= bit;
+          colUsed[c] &= bit;
+          boxUsed[b] &= bit;
+        }
+
+        function dfs() {
+          let bestIdx = -1;
+          let bestMask = 0;
+          let bestCount = 10;
+
+          for (let i = 0; i < CELL_COUNT; i++) {
+            if (grid[i] !== 0) continue;
+            const mask = getMask(i);
+            const cnt = popcount(mask);
+            if (cnt === 0) return false;
+            if (cnt < bestCount) {
+              bestCount = cnt;
+              bestMask = mask;
+              bestIdx = i;
+              if (cnt === 1) break;
+            }
+          }
+          if (bestIdx === -1) return true; // filled
+
+          const digits = [];
+          for (let d = 1; d <= 9; d++) if (bestMask & (1 << d)) digits.push(d);
+          shuffle(digits);
+
+          for (const d of digits) {
+            setNum(bestIdx, d);
+            if (dfs()) return true;
+            unsetNum(bestIdx, d);
+          }
+          return false;
+        }
+
+        dfs();
+        return grid;
+      }
+
+      // ===== 求解器：計數解的數量（>=2 即可提前停止） =====
+      function countSolutions(grid, limit = 2) {
+        const g = grid.slice();
+        const rowUsed = Array(9).fill(0);
+        const colUsed = Array(9).fill(0);
+        const boxUsed = Array(9).fill(0);
+
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const v = g[i];
+          if (!v) continue;
+          const bit = 1 << v;
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          if (rowUsed[r] & bit) return 0;
+          if (colUsed[c] & bit) return 0;
+          if (boxUsed[b] & bit) return 0;
+          rowUsed[r] |= bit;
+          colUsed[c] |= bit;
+          boxUsed[b] |= bit;
+        }
+
+        function getMask(i) {
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          return DIGIT_MASK & ~(rowUsed[r] | colUsed[c] | boxUsed[b]);
+        }
+
+        function place(i, d) {
+          g[i] = d;
+          const bit = 1 << d;
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          rowUsed[r] |= bit;
+          colUsed[c] |= bit;
+          boxUsed[b] |= bit;
+        }
+
+        function unplace(i, d) {
+          g[i] = 0;
+          const bit = ~(1 << d);
+          const [r, c] = idxToRC(i);
+          const b = boxIndex(r, c);
+          rowUsed[r] &= bit;
+          colUsed[c] &= bit;
+          boxUsed[b] &= bit;
+        }
+
+        let count = 0;
+
+        function dfs() {
+          if (count >= limit) return;
+          let best = -1;
+          let bestMask = 0;
+          let bestCnt = 10;
+
+          for (let i = 0; i < CELL_COUNT; i++) {
+            if (g[i] !== 0) continue;
+            const mask = getMask(i);
+            const cnt = popcount(mask);
+            if (cnt === 0) return;
+            if (cnt < bestCnt) {
+              bestCnt = cnt;
+              bestMask = mask;
+              best = i;
+              if (cnt === 1) break;
+            }
+          }
+
+          if (best === -1) {
+            count++;
+            return;
+          }
+
+          for (let d = 1; d <= 9; d++) {
+            if (!(bestMask & (1 << d))) continue;
+            place(best, d);
+            dfs();
+            unplace(best, d);
+            if (count >= limit) return;
+          }
+        }
+
+        dfs();
+        return count;
+      }
+
+      // ===== 挖洞：每一步都檢查唯一解 =====
+      async function buildPuzzleByDifficulty(level) {
+        const cfg = DIFFICULTIES[level] || DIFFICULTIES.medium;
+        for (let attempt = 1; attempt <= 20; attempt++) {
+          const solved = generateSolvedBoard();
+          const p = solved.slice();
+          const targetClues = randomInt(cfg.min, cfg.max);
+          let clues = 81;
+
+          const positions = shuffle(Array.from({ length: CELL_COUNT }, (_, i) => i));
+
+          for (let k = 0; k < positions.length; k++) {
+            if (clues <= targetClues) break;
+            const i = positions[k];
+            const backup = p[i];
+            p[i] = 0;
+            const nsol = countSolutions(p, 2);
+            if (nsol !== 1) p[i] = backup;
+            else clues--;
+
+            if (k % 8 === 0) await sleepFrame();
+          }
+
+          if (clues >= cfg.min && clues <= cfg.max) {
+            return { puzzle: p, solution: solved, clues };
+          }
+        }
+
+        // 保底：理論上很少到這裡，仍回傳可用題
+        const solved = generateSolvedBoard();
+        const p = solved.slice();
+        const positions = shuffle(Array.from({ length: CELL_COUNT }, (_, i) => i));
+        let clues = 81;
+        const targetClues = randomInt(DIFFICULTIES.medium.min, DIFFICULTIES.medium.max);
+        for (let i = 0; i < positions.length && clues > targetClues; i++) {
+          const pos = positions[i];
+          const backup = p[pos];
+          p[pos] = 0;
+          if (countSolutions(p, 2) !== 1) p[pos] = backup;
+          else clues--;
+          if (i % 10 === 0) await sleepFrame();
+        }
+        return { puzzle: p, solution: solved, clues };
+      }
+
+      // ===== UI 建立 =====
+      function buildBoardUI() {
+        boardEl.innerHTML = "";
+        cells.length = 0;
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          if (i % 9 === 2 || i % 9 === 5) cell.classList.add("bright-right");
+          if (Math.floor(i / 9) === 2 || Math.floor(i / 9) === 5) cell.classList.add("bright-bottom");
+
+          const value = document.createElement("div");
+          value.className = "value";
+
+          const notesEl = document.createElement("div");
+          notesEl.className = "notes";
+          for (let d = 1; d <= 9; d++) {
+            const s = document.createElement("span");
+            s.dataset.d = String(d);
+            notesEl.appendChild(s);
+          }
+
+          cell.appendChild(value);
+          cell.appendChild(notesEl);
+          cell.dataset.i = String(i);
+
+          cell.addEventListener("click", () => {
+            if (generating || paused) return;
+            selected = i;
+            selectedDigit = board[i] || selectedDigit;
+            hintCell = -1;
+            setHintMsg("");
+            render();
+          });
+
+          cell.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            noteMode = !noteMode;
+            noteBtn.classList.toggle("active", noteMode);
+            saveGame();
+          });
+
+          boardEl.appendChild(cell);
+          cells.push({ cell, value, notesEl });
+        }
+      }
+
+      function buildKeypad() {
+        const keypad = document.getElementById("keypad");
+        keypad.innerHTML = "";
+        for (let d = 1; d <= 9; d++) {
+          const b = document.createElement("button");
+          b.className = "key";
+          b.dataset.d = String(d);
+          b.innerHTML = `${d}<span class="remain" id="remain-${d}">9</span>`;
+          b.addEventListener("click", () => {
+            selectedDigit = d;
+            if (selected !== -1 && !paused && !generating) doInput(d);
+            else render();
+          });
+          keypad.appendChild(b);
+        }
+        const clear = document.createElement("button");
+        clear.className = "key";
+        clear.textContent = "清除";
+        clear.addEventListener("click", () => {
+          if (selected === -1 || paused || generating) return;
+          doInput(0);
+        });
+        keypad.appendChild(clear);
+      }
+
+      // ===== 狀態快照（Undo/Redo） =====
+      function snapshot() {
+        return {
+          board: board.slice(),
+          notes: notes.slice(),
+          elapsed,
+          hintCount,
+          errorCount,
+          completed
+        };
+      }
+      function restoreSnapshot(s) {
+        board = s.board.slice();
+        notes = s.notes.slice();
+        elapsed = s.elapsed;
+        hintCount = s.hintCount;
+        errorCount = s.errorCount;
+        completed = !!s.completed;
+        showCheckedErrors = false;
+        checkedErrorSet.clear();
+        hintCell = -1;
+        setHintMsg("");
+      }
+      function pushUndo() {
+        undoStack.push(snapshot());
+        if (undoStack.length > 600) undoStack.shift();
+        redoStack = [];
+      }
+
+      // ===== 核心互動 =====
+      function doInput(num, fromHint = false) {
+        if (selected < 0 || selected >= CELL_COUNT) return;
+        if (givens[selected]) return;
+        if (completed) return;
+
+        pushUndo();
+        showCheckedErrors = false;
+        checkedErrorSet.clear();
+        hintCell = -1;
+        setHintMsg("");
+
+        if (noteMode && !fromHint) {
+          if (num === 0) {
+            notes[selected] = 0;
+          } else {
+            const bit = 1 << num;
+            notes[selected] ^= bit;
+          }
+        } else {
+          const old = board[selected];
+          if (num === 0) {
+            board[selected] = 0;
+          } else {
+            board[selected] = num;
+            notes[selected] = 0;
+            if (autoUpdateNotes) removePeerNotes(selected, num);
+            if (!fromHint && num !== solution[selected]) errorCount++;
+          }
+          if (old === num) {
+            undoStack.pop();
+          }
+        }
+
+        updateAfterAction();
+      }
+
+      function removePeerNotes(idx, d) {
+        const bit = ~(1 << d);
+        for (const p of PEERS[idx]) notes[p] &= bit;
+      }
+
+      function updateAfterAction() {
+        render();
+        if (checkCompleted()) {
+          completed = true;
+          paused = true;
+          stopTimer();
+          statStatus.textContent = "已完成";
+          showToast(`完成！時間 ${formatTime(elapsed)}，提示 ${hintCount} 次`);
+        } else {
+          statStatus.textContent = paused ? "已暫停" : "進行中";
+        }
+        saveGame();
+      }
+
+      function checkCompleted() {
+        for (let i = 0; i < CELL_COUNT; i++) {
+          if (board[i] === 0) return false;
+          if (board[i] !== solution[i]) return false;
+        }
+        const bad = computeConflicts(board);
+        return bad.size === 0;
+      }
+
+      // ===== 提示：先裸單、再隱單、最後填解答 =====
+      function useHint() {
+        if (completed || paused || generating) return;
+        const empties = [];
+        for (let i = 0; i < CELL_COUNT; i++) if (board[i] === 0) empties.push(i);
+        if (!empties.length) return;
+
+        let target = -1;
+        let digit = 0;
+        let message = "";
+
+        // Naked Single
+        for (const i of empties) {
+          const mask = getCandidateMask(board, i);
+          if (popcount(mask) === 1) {
+            target = i;
+            digit = bitToDigit(mask & -mask);
+            message = `提示：此格只能填 ${digit}（裸單）`;
+            break;
+          }
+        }
+
+        // Hidden Single
+        if (target === -1) {
+          for (const unit of ALL_UNITS) {
+            for (let d = 1; d <= 9; d++) {
+              let pos = -1;
+              let count = 0;
+              for (const i of unit) {
+                if (board[i] !== 0) continue;
+                const mask = getCandidateMask(board, i);
+                if (mask & (1 << d)) {
+                  pos = i;
+                  count++;
+                  if (count > 1) break;
+                }
+              }
+              if (count === 1) {
+                target = pos;
+                digit = d;
+                message = `提示：數字 ${d} 在此單位只有一個位置（隱單）`;
+                break;
+              }
+            }
+            if (target !== -1) break;
+          }
+        }
+
+        // Fallback：填一格正解
+        if (target === -1) {
+          target = empties[(Math.random() * empties.length) | 0];
+          digit = solution[target];
+          message = `提示：已為你填入一格（${digit}）`;
+        }
+
+        selected = target;
+        hintCell = target;
+        hintCount++;
+        doInput(digit, true);
+        setHintMsg(message);
+        showToast("已套用提示");
+      }
+
+      function runCheck() {
+        const conflictSet = computeConflicts(board);
+        const wrongSet = new Set();
+        for (let i = 0; i < CELL_COUNT; i++) {
+          if (board[i] && board[i] !== solution[i]) wrongSet.add(i);
+        }
+        checkedErrorSet = new Set([...conflictSet, ...wrongSet]);
+        showCheckedErrors = true;
+
+        if (checkedErrorSet.size === 0) {
+          setHintMsg("檢查結果：目前沒有發現錯誤。");
+          showToast("沒有發現錯誤");
+        } else {
+          setHintMsg(`檢查結果：發現 ${checkedErrorSet.size} 格衝突/錯誤。`);
+          showToast(`發現 ${checkedErrorSet.size} 格錯誤`);
+        }
+        render();
+      }
+
+      function resetProgress(resetTimer = true) {
+        pushUndo();
+        board = puzzle.slice();
+        notes.fill(0);
+        selected = -1;
+        selectedDigit = 0;
+        hintCell = -1;
+        hintCount = 0;
+        errorCount = 0;
+        completed = false;
+        showCheckedErrors = false;
+        checkedErrorSet.clear();
+        if (resetTimer) elapsed = 0;
+        paused = false;
+        startTimer();
+        setHintMsg("");
+        updateAfterAction();
+      }
+
+      // ===== 渲染 =====
+      function render() {
+        const conflictSet = computeConflicts(board);
+        const activeErrorSet = autoCheck ? conflictSet : (showCheckedErrors ? checkedErrorSet : new Set());
+
+        const selectedValue = selected >= 0 ? board[selected] : 0;
+        const sameDigit = selectedDigit || selectedValue;
+
+        for (let i = 0; i < CELL_COUNT; i++) {
+          const { cell, value, notesEl } = cells[i];
+          const v = board[i];
+          const isGiven = givens[i];
+
+          cell.classList.toggle("given", isGiven);
+          cell.classList.toggle("selected", i === selected);
+          cell.classList.toggle("conflict", activeErrorSet.has(i));
+
+          let peer = false;
+          if (selected !== -1) {
+            const [sr, sc] = idxToRC(selected);
+            const [r, c] = idxToRC(i);
+            peer = (r === sr || c === sc || boxIndex(r, c) === boxIndex(sr, sc));
+          }
+          cell.classList.toggle("peer", selected !== -1 && peer && i !== selected);
+
+          const same = sameDigit && v === sameDigit;
+          cell.classList.toggle("same", !!same);
+
+          if (i === hintCell) {
+            cell.style.outline = "3px solid var(--accent-2)";
+            cell.style.outlineOffset = "-3px";
+          } else {
+            cell.style.outline = "";
+          }
+
+          if (v) {
+            value.textContent = String(v);
+            notesEl.style.display = "none";
+          } else {
+            value.textContent = "";
+            notesEl.style.display = "grid";
+            const mask = notes[i];
+            for (let d = 1; d <= 9; d++) {
+              notesEl.children[d - 1].textContent = (mask & (1 << d)) ? String(d) : "";
+            }
+          }
+        }
+
+        noteBtn.classList.toggle("active", noteMode);
+        pauseBtn.textContent = paused ? "繼續" : "暫停";
+        statHints.textContent = String(hintCount);
+        statErrors.textContent = String(errorCount);
+        statDifficulty.textContent = DIFFICULTIES[difficulty].label;
+        timerEl.textContent = formatTime(elapsed);
+
+        updateKeypadRemain();
+        updateUndoRedoButtons();
+        statStatus.textContent = completed ? "已完成" : (paused ? "已暫停" : "進行中");
+      }
+
+      function updateKeypadRemain() {
+        const count = Array(10).fill(0);
+        for (const v of board) if (v) count[v]++;
+        for (let d = 1; d <= 9; d++) {
+          const remain = 9 - count[d];
+          const el = document.getElementById(`remain-${d}`);
+          if (el) el.textContent = String(remain);
+        }
+      }
+
+      function updateUndoRedoButtons() {
+        undoBtn.disabled = undoStack.length === 0;
+        redoBtn.disabled = redoStack.length === 0;
+      }
+
+      // ===== 計時 =====
+      function startTimer() {
+        stopTimer();
+        timerId = setInterval(() => {
+          if (!paused && !completed && !generating) {
+            elapsed++;
+            timerEl.textContent = formatTime(elapsed);
+            if (Date.now() - lastSaveAt > 5000) saveGame();
+          }
+        }, 1000);
+      }
+      function stopTimer() {
+        if (timerId) clearInterval(timerId);
+        timerId = null;
+      }
+
+      // ===== 存檔/讀檔 =====
+      function saveGame() {
+        lastSaveAt = Date.now();
+        const data = {
+          v: 1,
+          puzzle, solution, board, givens, notes,
+          selected, selectedDigit,
+          noteMode, autoCheck, autoUpdateNotes,
+          paused, completed, hintCount, errorCount,
+          difficulty, elapsed
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      }
+
+      function loadGame() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        try {
+          const d = JSON.parse(raw);
+          if (!d || !Array.isArray(d.puzzle) || d.puzzle.length !== 81) return false;
+          puzzle = d.puzzle.slice();
+          solution = d.solution.slice();
+          board = d.board.slice();
+          givens = d.givens.slice();
+          notes = d.notes.slice();
+          selected = Number.isInteger(d.selected) ? d.selected : -1;
+          selectedDigit = Number.isInteger(d.selectedDigit) ? d.selectedDigit : 0;
+          noteMode = !!d.noteMode;
+          autoCheck = d.autoCheck !== false;
+          autoUpdateNotes = d.autoUpdateNotes !== false;
+          paused = !!d.paused;
+          completed = !!d.completed;
+          hintCount = d.hintCount | 0;
+          errorCount = d.errorCount | 0;
+          difficulty = DIFFICULTIES[d.difficulty] ? d.difficulty : "medium";
+          elapsed = d.elapsed | 0;
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      // ===== 新遊戲 =====
+      function hasCurrentProgress() {
+        if (!puzzle.some(v => v !== 0)) return false;
+        for (let i = 0; i < CELL_COUNT; i++) {
+          if (board[i] !== puzzle[i]) return true;
+          if (notes[i] !== 0) return true;
+        }
+        return elapsed > 0 && !completed;
+      }
+
+      async function newGame(force = false) {
+        if (generating) return;
+        if (!force && hasCurrentProgress()) {
+          if (!confirm("目前進度將被覆蓋，確定要產生新題目？")) return;
+        }
+
+        generating = true;
+        loadingEl.classList.add("show");
+        await sleepFrame();
+
+        difficulty = difficultyEl.value;
+        const { puzzle: p, solution: s } = await buildPuzzleByDifficulty(difficulty);
+
+        puzzle = p;
+        solution = s;
+        board = p.slice();
+        givens = p.map(v => v !== 0);
+        notes = Array(CELL_COUNT).fill(0);
+
+        selected = -1;
+        selectedDigit = 0;
+        noteMode = false;
+        paused = false;
+        completed = false;
+        hintCount = 0;
+        errorCount = 0;
+        elapsed = 0;
+        hintCell = -1;
+        showCheckedErrors = false;
+        checkedErrorSet.clear();
+        undoStack = [];
+        redoStack = [];
+        setHintMsg("");
+
+        autoCheck = autoCheckEl.checked;
+        autoUpdateNotes = autoNotesEl.checked;
+
+        renderingSafe();
+        startTimer();
+        saveGame();
+
+        loadingEl.classList.remove("show");
+        generating = false;
+      }
+
+      function renderingSafe() {
+        difficultyEl.value = difficulty;
+        autoCheckEl.checked = autoCheck;
+        autoNotesEl.checked = autoUpdateNotes;
+        render();
+      }
+
+      // ===== 鍵盤控制 =====
+      function handleKey(e) {
+        if (generating) return;
+        if (e.target && /input|select|textarea|button/i.test(e.target.tagName)) return;
+
+        if (e.key >= "1" && e.key <= "9") {
+          if (selected !== -1 && !paused) {
+            doInput(Number(e.key));
+          } else {
+            selectedDigit = Number(e.key);
+            render();
+          }
+          return;
+        }
+
+        if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") {
+          if (selected !== -1 && !paused) doInput(0);
+          return;
+        }
+
+        if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          if (selected === -1) selected = 0;
+          let [r, c] = idxToRC(selected);
+          if (e.key === "ArrowUp") r = (r + 8) % 9;
+          if (e.key === "ArrowDown") r = (r + 1) % 9;
+          if (e.key === "ArrowLeft") c = (c + 8) % 9;
+          if (e.key === "ArrowRight") c = (c + 1) % 9;
+          selected = rcToIdx(r, c);
+          hintCell = -1;
+          render();
+          return;
+        }
+
+        if (e.key === "Tab") {
+          e.preventDefault();
+          if (selected === -1) selected = 0;
+          selected = (selected + (e.shiftKey ? -1 : 1) + 81) % 81;
+          hintCell = -1;
+          render();
+          return;
+        }
+
+        if (e.key.toLowerCase() === "n") {
+          noteMode = !noteMode;
+          render();
+          saveGame();
+          return;
+        }
+
+        if (e.key === "Escape") {
+          selected = -1;
+          selectedDigit = 0;
+          hintCell = -1;
+          render();
+        }
+      }
+
+      // ===== 事件綁定 =====
+      function bindEvents() {
+        newBtn.addEventListener("click", () => newGame(false));
+
+        difficultyEl.addEventListener("change", () => {
+          difficulty = difficultyEl.value;
+          statDifficulty.textContent = DIFFICULTIES[difficulty].label;
+          saveGame();
+        });
+
+        noteBtn.addEventListener("click", () => {
+          noteMode = !noteMode;
+          render();
+          saveGame();
+        });
+
+        clearBtn.addEventListener("click", () => {
+          if (selected === -1 || paused) return;
+          doInput(0);
+        });
+
+        undoBtn.addEventListener("click", () => {
+          if (!undoStack.length) return;
+          redoStack.push(snapshot());
+          const s = undoStack.pop();
+          restoreSnapshot(s);
+          render();
+          saveGame();
+        });
+
+        redoBtn.addEventListener("click", () => {
+          if (!redoStack.length) return;
+          undoStack.push(snapshot());
+          const s = redoStack.pop();
+          restoreSnapshot(s);
+          render();
+          saveGame();
+        });
+
+        hintBtn.addEventListener("click", useHint);
+
+        checkBtn.addEventListener("click", runCheck);
+
+        resetBtn.addEventListener("click", () => {
+          if (!confirm("清除玩家輸入並重置計時器？")) return;
+          resetProgress(true);
+        });
+
+        solveBtn.addEventListener("click", () => {
+          if (!confirm("確定要顯示完整解答？此局會視為結束。")) return;
+          if (!confirm("再次確認：要顯示解答嗎？")) return;
+          pushUndo();
+          board = solution.slice();
+          notes.fill(0);
+          completed = true;
+          paused = true;
+          stopTimer();
+          setHintMsg("已顯示完整解答。");
+          render();
+          saveGame();
+        });
+
+        pauseBtn.addEventListener("click", () => {
+          paused = !paused;
+          render();
+          saveGame();
+        });
+
+        autoCheckEl.addEventListener("change", () => {
+          autoCheck = autoCheckEl.checked;
+          if (autoCheck) showCheckedErrors = false;
+          render();
+          saveGame();
+        });
+
+        autoNotesEl.addEventListener("change", () => {
+          autoUpdateNotes = autoNotesEl.checked;
+          saveGame();
+        });
+
+        themeBtn.addEventListener("click", () => {
+          const dark = document.documentElement.getAttribute("data-theme") !== "dark";
+          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+          localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+          themeBtn.textContent = dark ? "淺色模式" : "深色模式";
+        });
+
+        document.addEventListener("keydown", handleKey);
+      }
+
+      // ===== 初始化 =====
+      function initTheme() {
+        const pref = localStorage.getItem(THEME_KEY);
+        const dark = pref === "dark";
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        themeBtn.textContent = dark ? "淺色模式" : "深色模式";
+      }
+
+      async function init() {
+        initUnits();
+        buildBoardUI();
+        buildKeypad();
+        bindEvents();
+        initTheme();
+
+        const restored = loadGame();
+        if (restored) {
+          const keep = confirm("偵測到未完成遊戲，是否繼續？");
+          if (keep) {
+            renderingSafe();
+            startTimer();
+            return;
+          }
+        }
+
+        difficulty = "medium";
+        difficultyEl.value = "medium";
+        await newGame(true);
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
